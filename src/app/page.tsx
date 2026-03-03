@@ -2070,46 +2070,6 @@ function HomeContent() {
                 const count = stats.total_developers;
                 if (count <= 0) return null;
 
-                if (celebrationActive) {
-                  return (
-                    <div className="w-full max-w-sm">
-                      <style>{`@keyframes celebration-glow {
-  0%, 100% { box-shadow: 0 0 8px ${theme.accent}60; }
-  50% { box-shadow: 0 0 20px ${theme.accent}, 0 0 40px ${theme.accent}40; }
-}`}</style>
-                      <div className="border-[2px] border-border bg-bg/80 px-4 py-3 backdrop-blur-sm">
-                        <div className="mb-2 flex items-center justify-center gap-2">
-                          <span className="animate-pulse text-[10px]" style={{ color: theme.accent }}>★</span>
-                          <span className="text-[10px] tracking-widest text-cream">10,000 DEVELOPERS</span>
-                          <span className="animate-pulse text-[10px]" style={{ color: theme.accent }}>★</span>
-                        </div>
-                        <div className="mb-2 text-center text-[9px] tracking-wider text-cream/50">
-                          The city that code built.
-                        </div>
-                        <div className="relative h-2.5 w-full overflow-hidden border-[2px] border-border bg-bg">
-                          <div
-                            className="absolute inset-y-0 left-0"
-                            style={{
-                              width: "100%",
-                              backgroundColor: theme.accent,
-                              boxShadow: `0 0 8px ${theme.accent}60`,
-                              animation: "celebration-glow 2s ease-in-out infinite",
-                            }}
-                          />
-                        </div>
-                        <div className="mt-2 flex items-baseline justify-between">
-                          <span className="text-[9px] tracking-wider" style={{ color: theme.accent }}>
-                            10K unlocked
-                          </span>
-                          <span className="text-[9px] text-cream/40">
-                            Next: 15K
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                }
-
                 const target = MILESTONES.find((m) => count < m);
                 if (!target) return null;
                 const prev = MILESTONES[MILESTONES.indexOf(target) - 1] ?? 0;
