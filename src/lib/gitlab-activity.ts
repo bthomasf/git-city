@@ -8,6 +8,10 @@ import {
   getConfiguredGitlabGroupIds,
   getConfiguredGitlabProjectIds,
 } from "./gitlab";
+import {
+  getProjectIdsFromRegionsConfig,
+  getRegionsConfigFromEnv,
+} from "./gitlab-regions-config";
 
 export type ActivityKind = "commit" | "merge_request" | "issue";
 
@@ -59,6 +63,33 @@ export function getLastSyncIso(): string | null {
   return lastSyncIso;
 }
 
+/**
+ * 解析参与同步的项目 ID：若配置了 GITLAB_REGIONS_CONFIG_JSON 则从中取 projectIds；
+ * 否则使用 GITLAB_PROJECT_IDS + GITLAB_GROUP_IDS 展开（兜底）。
+ */
+export async function getResolvedGitlabProjectIds(): Promise<number[]> {
+  const regionsConfig = getRegionsConfigFromEnv();
+  if (regionsConfig) {
+    return getProjectIdsFromRegionsConfig(regionsConfig);
+  }
+  const explicitProjectIds = getConfiguredGitlabProjectIds();
+  const groupIds = getConfiguredGitlabGroupIds();
+  const projectIdSet = new Set<number>(explicitProjectIds);
+  for (const gid of groupIds) {
+    try {
+      const projects = await withRetry(
+        () => fetchGroupProjects(gid),
+        `groups/${gid}/projects`,
+      );
+      for (const p of projects) projectIdSet.add(p.id);
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.warn(`[gitlab-sync] 获取 Group ${gid} 项目列表失败，将忽略该 Group`, error);
+    }
+  }
+  return Array.from(projectIdSet);
+}
+
 export async function runGitlabSyncJob(
   overrideWindow?: ActivityWindow,
 ): Promise<SyncResult> {
@@ -74,31 +105,7 @@ export async function runGitlabSyncJob(
     until: toIso(now),
   };
 
-  const explicitProjectIds = getConfiguredGitlabProjectIds();
-  const groupIds = getConfiguredGitlabGroupIds();
-
-  const projectIdSet = new Set<number>();
-  for (const id of explicitProjectIds) {
-    projectIdSet.add(id);
-  }
-
-  for (const gid of groupIds) {
-    try {
-      // eslint-disable-next-line no-await-in-loop
-      const projects = await withRetry(
-        () => fetchGroupProjects(gid),
-        `groups/${gid}/projects`,
-      );
-      for (const p of projects) {
-        projectIdSet.add(p.id);
-      }
-    } catch (error) {
-      // eslint-disable-next-line no-console
-      console.warn(`[gitlab-sync] 获取 Group ${gid} 项目列表失败，将忽略该 Group`, error);
-    }
-  }
-
-  const projectIds = Array.from(projectIdSet);
+  const projectIds = await getResolvedGitlabProjectIds();
   if (projectIds.length === 0) {
     return { window, events: [], projectIds: [] };
   }

@@ -20,6 +20,16 @@ const zhCN: Record<string, string> = {
   "team.risk.none": "当前时间范围内未检测到明显风险。",
   "team.loading": "正在从 GitLab 加载团队活动数据…",
   "team.error": "加载失败，请检查 GitLab 配置或稍后重试。",
+  "team.panel.expand": "展开面板",
+  "team.panel.collapse": "收起面板",
+  "team.search.button": "筛选",
+  "team.search.clear": "清除筛选",
+  "team.members.user": "用户",
+  "team.regionsMode": "当前为区域-小区模式，成员列表由各区域楼宇展示。",
+  "team.commits.title": "最近 Commit",
+  "team.commits.project": "项目",
+  "team.commits.empty": "暂无 commit 或加载失败。",
+  "team.commits.openInGitlab": "在 GitLab 中查看",
 };
 
 const bundles: Record<Locale, Record<string, string>> = {

@@ -22,6 +22,9 @@ const ROUTE_LIMITS: [string, number, number][] = [
   ["/api/checkout", 6, 60_000],
   ["/api/claim", 5, 60_000],
   ["/api/city", 30, 60_000],
+  ["/api/gitlab/commits", 30, 60_000],
+  ["/api/gitlab/city", 20, 60_000],
+  ["/api/gitlab/sync", 20, 60_000],
   ["/api/dev/", 60, 60_000],
   ["/api/items", 30, 60_000],
   ["/api/auth", 10, 60_000],
@@ -91,19 +94,20 @@ export async function middleware(request: NextRequest) {
   }
 
   // ── 2. Supabase Session Refresh ──────────────────────────────────────
-  // Only call Supabase when the user is actually logged in (has auth
-  // cookies).  For anonymous visitors (~80%+ of viral traffic) we skip
-  // the external HTTP call entirely, saving latency and Supabase quota.
+  // Only when Supabase is configured and user has auth cookies.
+  // When running GitLab City only (no Supabase), skip to avoid missing env errors.
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const hasSession = request.cookies
     .getAll()
     .some((c) => c.name.startsWith("sb-"));
 
   let supabaseResponse = NextResponse.next({ request });
 
-  if (hasSession) {
+  if (supabaseUrl && supabaseAnonKey && hasSession) {
     const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      supabaseUrl,
+      supabaseAnonKey,
       {
         cookies: {
           getAll() {

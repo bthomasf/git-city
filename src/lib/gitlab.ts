@@ -119,6 +119,10 @@ export function getConfiguredGitlabProjectIds(): number[] {
     .filter((n) => !Number.isNaN(n) && n > 0);
 }
 
+export async function fetchProject(projectId: number): Promise<GitlabProject> {
+  return gitlabRequest<GitlabProject>(`projects/${projectId}`, { method: "GET" });
+}
+
 export async function fetchGroupProjects(groupId: number): Promise<GitlabProject[]> {
   return gitlabRequest<GitlabProject[]>(`groups/${groupId}/projects`, {
     method: "GET",
@@ -140,6 +144,29 @@ export async function fetchProjectCommits(
     since: sinceIso,
     until: untilIso,
   });
+}
+
+/**
+ * 拉取某项目下指定作者的最新 commit，用于「点击楼层展示 commit」。
+ */
+export async function fetchProjectCommitsByAuthor(
+  projectId: number,
+  authorUsername: string,
+  limit: number = 10,
+  sinceIso?: string,
+  untilIso?: string,
+): Promise<GitlabCommit[]> {
+  const commits = await gitlabRequest<GitlabCommit[]>(
+    `projects/${projectId}/repository/commits`,
+    { method: "GET" },
+    {
+      per_page: limit,
+      author: authorUsername,
+      since: sinceIso,
+      until: untilIso,
+    },
+  );
+  return commits;
 }
 
 export async function fetchProjectMergeRequests(

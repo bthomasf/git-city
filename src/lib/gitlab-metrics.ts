@@ -46,12 +46,25 @@ export interface RiskSummary {
   busFactorProjects: BusFactorProjectRisk[];
 }
 
+/** 单栋楼：一个 (项目, 开发者) 的贡献指标，用于区域-小区-楼视图 */
+export interface ProjectMemberMetric {
+  projectId: number;
+  memberKey: string;
+  memberName: string;
+  score: number;
+  commits: number;
+  mergeRequests: number;
+  issues: number;
+}
+
 export interface AggregatedMetrics {
   window: ActivityWindow;
   members: MemberAggregate[];
   projects: ProjectAggregate[];
   collaborations: CollaborationEdge[];
   risks: RiskSummary;
+  /** 每 (projectId, memberKey) 的贡献指标，用于多区域多小区多楼布局 */
+  projectMemberMetrics: ProjectMemberMetric[];
 }
 
 function parseNumberEnv(name: string, fallback: number): number {
@@ -108,6 +121,7 @@ export function aggregateGitlabActivities(
   const memberMap = new Map<string, MemberAggregate & { projectSet: Set<number> }>();
   const projectMap = new Map<number, ProjectAggregate & { memberSet: Set<string> }>();
   const projectMemberEventCounts = new Map<number, Map<string, number>>();
+  const projectMemberMetricsMap = new Map<string, ProjectMemberMetric>();
 
   for (const e of events) {
     const kind = e.kind as BehaviorKind;
@@ -170,6 +184,26 @@ export function aggregateGitlabActivities(
       projectMemberEventCounts.set(e.projectId, memberCounts);
     }
     memberCounts.set(memberKey, (memberCounts.get(memberKey) ?? 0) + 1);
+
+    const pmKey = `${e.projectId}::${memberKey}`;
+    let pm = projectMemberMetricsMap.get(pmKey);
+    if (!pm) {
+      const m = memberMap.get(memberKey)!;
+      pm = {
+        projectId: e.projectId,
+        memberKey,
+        memberName: m.name,
+        score: 0,
+        commits: 0,
+        mergeRequests: 0,
+        issues: 0,
+      };
+      projectMemberMetricsMap.set(pmKey, pm);
+    }
+    pm.score += scoreDelta;
+    if (kind === "commit") pm.commits += 1;
+    if (kind === "merge_request") pm.mergeRequests += 1;
+    if (kind === "issue") pm.issues += 1;
   }
 
   const members: MemberAggregate[] = [];
@@ -251,6 +285,8 @@ export function aggregateGitlabActivities(
   members.sort((a, b) => b.score - a.score);
   projects.sort((a, b) => b.score - a.score);
   collaborations.sort((a, b) => b.score - a.score);
+  const projectMemberMetrics = Array.from(projectMemberMetricsMap.values());
+  projectMemberMetrics.sort((a, b) => b.score - a.score);
 
   return {
     window,
@@ -261,6 +297,7 @@ export function aggregateGitlabActivities(
       inactiveProjectIds,
       busFactorProjects,
     },
+    projectMemberMetrics,
   };
 }
 
