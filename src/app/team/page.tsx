@@ -25,6 +25,8 @@ interface BuildingRow {
   commits: number;
   mergeRequests: number;
   issues: number;
+  projectName?: string;
+  pathWithNamespace?: string;
 }
 
 interface TeamCityState {
@@ -38,6 +40,10 @@ interface TeamCityState {
   regions?: { id: string; name: string; neighborhoods: { id: string; name: string; projectIds: number[] }[] }[];
   /** 区域-小区模式时的楼栋行数据，用于派生成员列表 */
   buildingRows?: BuildingRow[];
+  /** 区域标签（名称 + 中心点），用于 3D 地图标注 */
+  regionLabels?: { id: string; name: string; center: [number, number, number] }[];
+  /** 小区标签（名称 + 中心点），用于 3D 地图标注 */
+  neighborhoodLabels?: { id: string; name: string; regionId: string; center: [number, number, number] }[];
 }
 
 interface GitlabCommitItem {
@@ -62,6 +68,9 @@ export default function TeamGitlabCityPage() {
   const [selectedBuilding, setSelectedBuilding] = useState<{ projectId: number; developerKey: string } | null>(null);
   const [commits, setCommits] = useState<GitlabCommitItem[]>([]);
   const [commitsLoading, setCommitsLoading] = useState(false);
+  const [commitsProjectName, setCommitsProjectName] = useState<string | null>(null);
+  const [commitsPathWithNamespace, setCommitsPathWithNamespace] = useState<string | null>(null);
+  const [buildingCommitModalOpen, setBuildingCommitModalOpen] = useState(false);
 
   const loadCity = useCallback(async () => {
     setLoading(true);
@@ -76,7 +85,15 @@ export default function TeamGitlabCityPage() {
           window: { since: string; until: string };
           regions: { id: string; name: string; neighborhoods: { id: string; name: string; projectIds: number[] }[] }[];
           buildingRows: BuildingRow[];
-          layout: { buildings: CityBuilding[]; plazas: CityPlaza[]; decorations: CityDecoration[]; river: CityRiver; bridges: CityBridge[] };
+          layout: {
+            buildings: CityBuilding[];
+            plazas: CityPlaza[];
+            decorations: CityDecoration[];
+            river: CityRiver;
+            bridges: CityBridge[];
+            regionLabels?: { id: string; name: string; center: [number, number, number] }[];
+            neighborhoodLabels?: { id: string; name: string; regionId: string; center: [number, number, number] }[];
+          };
         };
         setState({
           metrics: null,
@@ -87,6 +104,8 @@ export default function TeamGitlabCityPage() {
           bridges: cityJson.layout.bridges,
           regions: cityJson.regions,
           buildingRows: cityJson.buildingRows ?? [],
+          regionLabels: cityJson.layout.regionLabels ?? [],
+          neighborhoodLabels: cityJson.layout.neighborhoodLabels ?? [],
         });
         setUseRegionsApi(true);
         setLoading(false);
@@ -161,6 +180,14 @@ export default function TeamGitlabCityPage() {
   }, [state?.buildingRows]);
 
   const membersToShow = useRegionsApi && state?.buildingRows?.length ? regionMembers : members;
+  const projectIdToName = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const r of state?.buildingRows ?? []) {
+      if (map.has(r.projectId)) continue;
+      map.set(r.projectId, r.projectName ?? r.pathWithNamespace ?? `#${r.projectId}`);
+    }
+    return map;
+  }, [state?.buildingRows]);
   const collaborations = useMemo<CollaborationEdge[]>(() => state?.metrics?.collaborations ?? [], [state]);
   const risks = useMemo<RiskSummary | null>(() => state?.metrics?.risks ?? null, [state]);
 
@@ -190,20 +217,28 @@ export default function TeamGitlabCityPage() {
     const tb = b as TeamCityBuilding;
     if (tb.projectId != null && tb.developerKey != null) {
       setSelectedBuilding({ projectId: tb.projectId, developerKey: tb.developerKey });
+      setBuildingCommitModalOpen(true);
       setCommitsLoading(true);
       setCommits([]);
+      setCommitsProjectName(null);
+      setCommitsPathWithNamespace(null);
       fetch(
         `/api/gitlab/commits?projectId=${tb.projectId}&username=${encodeURIComponent(tb.developerKey)}&limit=10`,
       )
         .then((r) => r.json())
-        .then((data: { commits?: GitlabCommitItem[] }) => {
+        .then((data: { commits?: GitlabCommitItem[]; project_name?: string | null; path_with_namespace?: string | null }) => {
           setCommits(data.commits ?? []);
+          setCommitsProjectName(data.project_name ?? null);
+          setCommitsPathWithNamespace(data.path_with_namespace ?? null);
         })
         .catch(() => setCommits([]))
         .finally(() => setCommitsLoading(false));
     } else {
       setSelectedBuilding(null);
       setCommits([]);
+      setCommitsProjectName(null);
+      setCommitsPathWithNamespace(null);
+      setBuildingCommitModalOpen(false);
     }
   }, []);
 
@@ -227,6 +262,8 @@ export default function TeamGitlabCityPage() {
             accentColor={accentColor}
             onBuildingClick={handleBuildingClick}
             onFocusInfo={() => {}}
+            regionLabels={state.regionLabels}
+            neighborhoodLabels={state.neighborhoodLabels}
           />
         )}
       </div>
@@ -240,6 +277,63 @@ export default function TeamGitlabCityPage() {
       >
         {panelCollapsed ? t("team.panel.expand") : t("team.panel.collapse")}
       </button>
+
+      {/* 楼栋 Commit 浮层：不依赖侧栏，面板收起时也可查看 */}
+      {buildingCommitModalOpen && selectedBuilding && (
+        <div className="pointer-events-auto fixed inset-0 z-30 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/50"
+            role="button"
+            tabIndex={0}
+            onClick={() => setBuildingCommitModalOpen(false)}
+            onKeyDown={(e) => e.key === "Escape" && setBuildingCommitModalOpen(false)}
+            aria-label="关闭"
+          />
+          <div className="relative z-10 w-full max-w-md rounded-xl border border-border bg-bg-raised p-4 shadow-xl backdrop-blur">
+            <div className="mb-3 flex items-start justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-semibold normal-case">{t("team.commits.title")}</h2>
+                <p className="mt-1 text-[11px] text-muted normal-case">
+                  {selectedBuilding.developerKey} · {commitsProjectName ?? commitsPathWithNamespace ?? `${t("team.commits.project")} #${selectedBuilding.projectId}`}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setBuildingCommitModalOpen(false)}
+                className="rounded border border-border px-2 py-1 text-[11px] text-muted hover:bg-bg/80"
+              >
+                关闭
+              </button>
+            </div>
+            {commitsLoading ? (
+              <p className="text-[11px] text-muted normal-case">{t("team.loading")}</p>
+            ) : commits.length === 0 ? (
+              <p className="text-[11px] text-muted normal-case">{t("team.commits.empty")}</p>
+            ) : (
+              <ul className="max-h-[280px] space-y-1 overflow-auto text-[11px]">
+                {commits.map((c) => (
+                  <li key={c.id} className="border-t border-border/40 pt-1">
+                    {c.web_url ? (
+                      <a
+                        href={c.web_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block font-medium truncate text-cream underline decoration-muted hover:decoration-cream"
+                        title={t("team.commits.openInGitlab")}
+                      >
+                        {c.title}
+                      </a>
+                    ) : (
+                      <div className="font-medium truncate" title={c.title}>{c.title}</div>
+                    )}
+                    <div className="text-muted">{new Date(c.created_at).toLocaleString("zh-CN")}</div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
 
       {!panelCollapsed && (
       <div className="relative z-10 flex h-screen flex-col">
@@ -364,7 +458,7 @@ export default function TeamGitlabCityPage() {
               <div className="rounded-xl border border-border bg-bg-raised/70 p-3 backdrop-blur">
                 <h2 className="mb-2 text-xs font-semibold normal-case">{t("team.commits.title")}</h2>
                 <p className="mb-1 text-[11px] text-muted normal-case">
-                  {selectedBuilding.developerKey} · {t("team.commits.project")} #{selectedBuilding.projectId}
+                  {selectedBuilding.developerKey} · {commitsProjectName ?? commitsPathWithNamespace ?? `${t("team.commits.project")} #${selectedBuilding.projectId}`}
                 </p>
                 {commitsLoading ? (
                   <p className="text-[11px] text-muted normal-case">{t("team.loading")}</p>
@@ -404,7 +498,17 @@ export default function TeamGitlabCityPage() {
                   <div>
                     {t("team.members.commits")}: {selectedMember.commits} · {t("team.members.mr")}: {selectedMember.mergeRequests} · {t("team.members.issue")}: {selectedMember.issues}
                   </div>
-                  <div>Projects: {selectedMember.projectIds.length}</div>
+                  <div>
+                    参与项目: {selectedMember.projectIds.length} 个
+                    {selectedMember.projectIds.length > 0 && (
+                      <ul className="mt-0.5 list-inside list-disc truncate">
+                        {selectedMember.projectIds.slice(0, 5).map((pid) => (
+                          <li key={pid}>{projectIdToName.get(pid) ?? `#${pid}`}</li>
+                        ))}
+                        {selectedMember.projectIds.length > 5 && <li>…等 {selectedMember.projectIds.length - 5} 个</li>}
+                      </ul>
+                    )}
+                  </div>
                 </div>
               )}
               <h3 className="mb-1 text-[11px] font-normal text-muted normal-case">{t("team.collaboration.title")}</h3>
@@ -438,7 +542,7 @@ export default function TeamGitlabCityPage() {
                       <div className="mb-1 font-normal text-muted normal-case">{t("team.risk.inactive")}</div>
                       <ul className="space-y-0.5">
                         {risks.inactiveProjectIds.map((id) => (
-                          <li key={id}>Project #{id}</li>
+                          <li key={id}>{projectIdToName.get(id) ?? `Project #${id}`}</li>
                         ))}
                       </ul>
                     </div>
@@ -449,7 +553,7 @@ export default function TeamGitlabCityPage() {
                       <ul className="space-y-0.5">
                         {risks.busFactorProjects.map((r) => (
                           <li key={r.projectId}>
-                            Project #{r.projectId} · {r.primaryMemberKey} ({(r.ratio * 100).toFixed(0)}%)
+                            {projectIdToName.get(r.projectId) ?? `Project #${r.projectId}`} · {r.primaryMemberKey} ({(r.ratio * 100).toFixed(0)}%)
                           </li>
                         ))}
                       </ul>

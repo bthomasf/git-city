@@ -29,11 +29,13 @@ export async function GET(request: Request) {
 
     const commits = await fetchProjectCommitsByAuthor(projectId, username, limit);
     let pathWithNamespace: string | null = null;
+    let projectName: string | null = null;
     try {
       const project = await fetchProject(projectId);
       pathWithNamespace = project.path_with_namespace;
+      projectName = project.name ?? null;
     } catch {
-      // 项目信息拉取失败时仍返回 commit 列表，仅无跳转链接
+      // 项目信息拉取失败时仍返回 commit 列表，仅无跳转链接与项目名称
     }
     const baseUrl = (process.env.GITLAB_BASE_URL ?? "").replace(/\/+$/, "");
     const commitsWithUrl = commits.map((c) => ({
@@ -42,7 +44,11 @@ export async function GET(request: Request) {
         ? `${baseUrl}/${pathWithNamespace}/-/commit/${c.short_id}`
         : null,
     }));
-    return NextResponse.json({ commits: commitsWithUrl });
+    return NextResponse.json({
+      commits: commitsWithUrl,
+      project_name: projectName,
+      path_with_namespace: pathWithNamespace,
+    });
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error("[gitlab-commits] 拉取 commit 失败", error);

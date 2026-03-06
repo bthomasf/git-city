@@ -52,3 +52,22 @@
 - 团队页在区域模式下展示由楼栋数据聚合的成员列表，与扁平模式一致可点击查看贡献。
 - 点击某楼「最近 Commit」中某条 commit 可在新标签页打开对应 GitLab commit 页面。
 
+### feat(team): project names, region labels, building commit modal — fengbin04@corp.netease.com
+**日期**: 2026-03-06
+
+**改动摘要**: 团队 GitLab 城市 UX 优化：commits/city API 补充项目名称字段，团队页与 commit 列表优先展示项目名称；地图上增加区域与小区名称标签；点击楼栋时用独立浮层展示 commit，不依赖侧栏展开。
+
+**影响范围**:
+- `openspec/changes/team-gitlab-city-commit-region-ux/*`: 新增 proposal、design、specs、tasks 等 OpenSpec 变更产物。
+- `src/app/api/gitlab/commits/route.ts`: 响应增加 project_name、path_with_namespace，供前端展示项目名称。
+- `src/app/api/gitlab/city/route.ts`: buildingRows 按 projectId 解析项目信息并填充 projectName/pathWithNamespace；layout 增加 regionLabels、neighborhoodLabels（名称与中心点）。
+- `src/app/team/page.tsx`: commit 副标题与成员详情/风险列表使用项目名称；楼栋点击打开独立浮层展示 commit，支持遮罩与关闭按钮关闭。
+- `src/components/CityCanvas.tsx`: 新增可选 props regionLabels、neighborhoodLabels 并传入 CityScene。
+- `src/components/CityScene.tsx`: 使用 drei Html 在 3D 场景中渲染区域名与小区名标签。
+- `src/lib/gitlab-regions-city.ts`: RegionNeighborhoodBuildingRow 增加可选 projectName、pathWithNamespace。
+
+**行为变化**:
+- 团队页与 commit 列表处优先显示项目名称（或 path_with_namespace），无名称时回退为「#id」。
+- 3D 地图上可见区域与小区名称标签，便于分辨业务线与项目组。
+- 点击某栋楼时在页面中央弹出浮层展示该楼最近 10 条 commit（含项目名与 GitLab 跳转），面板收起时也可查看与关闭。
+

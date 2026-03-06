@@ -16,6 +16,10 @@ export interface RegionNeighborhoodBuildingRow {
   commits: number;
   mergeRequests: number;
   issues: number;
+  /** 项目名称，由 API 层按 projectId 解析后填充 */
+  projectName?: string;
+  /** 项目 path_with_namespace，由 API 层按 projectId 解析后填充 */
+  pathWithNamespace?: string;
 }
 
 const rowKey = (r: RegionNeighborhoodBuildingRow) =>

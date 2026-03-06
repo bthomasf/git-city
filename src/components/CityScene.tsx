@@ -3,6 +3,7 @@
 import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
+import { Html } from "@react-three/drei";
 import { createWindowAtlas, FocusBeacon } from "./Building3D";
 import InstancedBuildings from "./InstancedBuildings";
 import InstancedLabels from "./InstancedLabels";
@@ -74,6 +75,8 @@ interface CitySceneProps {
   flyMode?: boolean;
   ghostPreviewLogin?: string | null;
   holdRise?: boolean;
+  regionLabels?: { id: string; name: string; center: [number, number, number] }[];
+  neighborhoodLabels?: { id: string; name: string; regionId: string; center: [number, number, number] }[];
 }
 
 export default function CityScene({
@@ -89,6 +92,8 @@ export default function CityScene({
   flyMode,
   ghostPreviewLogin,
   holdRise,
+  regionLabels,
+  neighborhoodLabels,
 }: CitySceneProps) {
   // Single atlas texture for all building windows (created once per theme)
   const atlasTexture = useMemo(() => createWindowAtlas(colors), [colors]);
@@ -208,6 +213,26 @@ export default function CityScene({
           />
         </group>
       )}
+
+      {/* 区域与小区名称标签（团队城市） */}
+      {!introMode && regionLabels?.map((r) => (
+        <group key={`region-${r.id}`} position={[r.center[0], 8, r.center[2]]}>
+          <Html center transform distanceFactor={12} style={{ pointerEvents: "none", userSelect: "none" }}>
+            <div style={{ fontFamily: "sans-serif", fontSize: 14, fontWeight: 700, color: "#e8e8e8", textShadow: "0 0 4px #000, 0 1px 2px #000", whiteSpace: "nowrap" }}>
+              {r.name}
+            </div>
+          </Html>
+        </group>
+      ))}
+      {!introMode && neighborhoodLabels?.map((n) => (
+        <group key={`nb-${n.regionId}-${n.id}`} position={[n.center[0], 4, n.center[2]]}>
+          <Html center transform distanceFactor={10} style={{ pointerEvents: "none", userSelect: "none" }}>
+            <div style={{ fontFamily: "sans-serif", fontSize: 11, color: "#b0b0b0", textShadow: "0 0 2px #000", whiteSpace: "nowrap" }}>
+              {n.name}
+            </div>
+          </Html>
+        </group>
+      ))}
     </>
   );
 }

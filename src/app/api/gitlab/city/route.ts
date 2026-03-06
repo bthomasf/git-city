@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server";
 import { runGitlabSyncJob } from "@/lib/gitlab-activity";
+import { fetchProject } from "@/lib/gitlab";
 import { aggregateGitlabActivities } from "@/lib/gitlab-metrics";
 import { getRegionsConfigFromEnv } from "@/lib/gitlab-regions-config";
 import { layoutRegionNeighborhoodBuildings } from "@/lib/gitlab-regions-layout";
-import { getRegionNeighborhoodBuildings } from "@/lib/gitlab-regions-city";
+import type { TeamCityBuilding } from "@/lib/gitlab-regions-layout";
+import {
+  getRegionNeighborhoodBuildings,
+  type RegionNeighborhoodBuildingRow,
+} from "@/lib/gitlab-regions-city";
 
 const DEFAULT_RIVER = { x: -200, width: 40, length: 800, centerZ: 0 };
 
@@ -36,8 +41,61 @@ export async function GET(request: Request) {
       until: now.toISOString(),
     });
     const metrics = aggregateGitlabActivities(window, events, projectIds);
-    const buildingRows = getRegionNeighborhoodBuildings(config, metrics, filterUser);
+    const rawRows = getRegionNeighborhoodBuildings(config, metrics, filterUser);
+    const projectIdSet = new Set(rawRows.map((r) => r.projectId));
+    const projectInfoMap = new Map<number, { name: string; pathWithNamespace: string }>();
+    await Promise.all(
+      Array.from(projectIdSet).map(async (pid) => {
+        try {
+          const project = await fetchProject(pid);
+          projectInfoMap.set(pid, {
+            name: project.name,
+            pathWithNamespace: project.path_with_namespace,
+          });
+        } catch {
+          // 解析失败时保留原字段，不阻断返回
+        }
+      }),
+    );
+    const buildingRows: RegionNeighborhoodBuildingRow[] = rawRows.map((r) => {
+      const info = projectInfoMap.get(r.projectId);
+      return {
+        ...r,
+        projectName: info?.name,
+        pathWithNamespace: info?.pathWithNamespace,
+      };
+    });
     const buildings = layoutRegionNeighborhoodBuildings(buildingRows);
+    const teamBuildings = buildings as TeamCityBuilding[];
+    const regionLabels: { id: string; name: string; center: [number, number, number] }[] = [];
+    const neighborhoodLabels: { id: string; name: string; regionId: string; center: [number, number, number] }[] = [];
+    for (const region of config.regions) {
+      const inRegion = teamBuildings.filter((b) => b.regionId === region.id);
+      if (inRegion.length > 0) {
+        const xs = inRegion.map((b) => b.position[0]);
+        const zs = inRegion.map((b) => b.position[2]);
+        regionLabels.push({
+          id: region.id,
+          name: region.name,
+          center: [(Math.min(...xs) + Math.max(...xs)) / 2, 0, (Math.min(...zs) + Math.max(...zs)) / 2],
+        });
+      }
+      for (const neighborhood of region.neighborhoods) {
+        const inNb = teamBuildings.filter(
+          (b) => b.regionId === region.id && b.neighborhoodId === neighborhood.id,
+        );
+        if (inNb.length > 0) {
+          const xs = inNb.map((b) => b.position[0]);
+          const zs = inNb.map((b) => b.position[2]);
+          neighborhoodLabels.push({
+            id: neighborhood.id,
+            name: neighborhood.name,
+            regionId: region.id,
+            center: [(Math.min(...xs) + Math.max(...xs)) / 2, 0, (Math.min(...zs) + Math.max(...zs)) / 2],
+          });
+        }
+      }
+    }
 
     return NextResponse.json({
       window,
@@ -49,6 +107,8 @@ export async function GET(request: Request) {
         decorations: [],
         river: DEFAULT_RIVER,
         bridges: [],
+        regionLabels,
+        neighborhoodLabels,
       },
     });
   } catch (error) {
